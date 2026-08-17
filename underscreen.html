@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SINAL — Compartilhamento de Tela 720p·30 (multi-espectador)</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg: #0b0f0d;
+    --panel: #101613;
+    --line: #22302a;
+    --text: #d8e8de;
+    --dim: #6f8a7d;
+    --signal: #35e08a;
+    --rec: #ff4d4d;
+    --amber: #e0a935;
+    --mono: "IBM Plex Mono", "SF Mono", ui-monospace, "Courier New", monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    min-height:100vh;
+  }
+  body{
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: -1px -1px;
+    background-color: var(--bg);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 32px 16px;
+  }
+  .rig{
+    width:100%;
+    max-width: 880px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(53,224,138,0.03), 0 30px 60px -20px rgba(0,0,0,0.6);
+    overflow:hidden;
+  }
+  .rig-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand{
+    display:flex; align-items:baseline; gap:10px;
+    letter-spacing: 0.14em;
+    font-size: 13px;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .brand b{ color: var(--text); font-weight:600; }
+  .spec-tag{
+    font-size:11px;
+    color: var(--signal);
+    border:1px solid var(--line);
+    padding: 3px 8px;
+    border-radius: 2px;
+    letter-spacing:0.08em;
+  }
+
+  /* ---- Tela de escolha de papel ---- */
+  .role-select{
+    padding: 48px 24px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap: 28px;
+    text-align:center;
+  }
+  .role-select p{
+    color: var(--dim);
+    font-size: 13px;
+    max-width: 440px;
+    line-height:1.6;
+    margin:0;
+  }
+  .role-cards{
+    display:flex;
+    gap: 16px;
+    flex-wrap:wrap;
+    justify-content:center;
+    width:100%;
+  }
+  .role-card{
+    flex:1;
+    min-width: 220px;
+    max-width: 320px;
+    border:1px solid var(--line);
+    border-radius: 3px;
+    padding: 24px 20px;
+    cursor:pointer;
+    background: rgba(255,255,255,0.01);
+    transition: border-color .15s ease, transform .1s ease;
+    text-align:left;
+  }
+  .role-card:hover{ border-color: var(--signal); }
+  .role-card .glyph{ font-size:22px; color: var(--signal); margin-bottom:10px; }
+  .role-card h3{
+    margin: 0 0 6px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .role-card small{ color: var(--dim); font-size:11.5px; line-height:1.5; display:block; }
+
+  .join-row{
+    display:flex; gap:8px; margin-top:14px;
+  }
+  .join-row input{
+    flex:1;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 9px 10px;
+    border-radius: 2px;
+    text-align:center;
+  }
+  .join-row input:focus{ outline:none; border-color: var(--signal); }
+  .join-row button{
+    background: var(--signal);
+    color:#06120c;
+    border:none;
+    font-family:var(--mono);
+    font-weight:600;
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    padding: 0 14px;
+    border-radius:2px;
+    cursor:pointer;
+  }
+  .join-row button:hover{ background:#4ff29c; }
+  .back-link{
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    cursor:pointer;
+    text-decoration: underline;
+    text-underline-offset:3px;
+  }
+
+  /* ---- Área de vídeo (transmissor/espectador) ---- */
+  .screen-wrap{
+    position:relative;
+    aspect-ratio: 16/9;
+    background:
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px),
+      #050906;
+    border-bottom: 1px solid var(--line);
+    overflow:hidden;
+  }
+  video{
+    width:100%; height:100%;
+    object-fit: contain;
+    display:block;
+    background:#050906;
+  }
+  .placeholder{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px;
+    color: var(--dim);
+    text-align:center;
+    padding: 0 24px;
+  }
+  .placeholder .glyph{
+    width:46px; height:46px;
+    border:1px solid var(--line);
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px;
+    color: var(--dim);
+  }
+  .placeholder small{ font-size:11px; letter-spacing:0.06em; }
+
+  .hud{
+    position:absolute; top:12px; left:12px;
+    display:flex; gap:10px; align-items:center;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    pointer-events:none;
+  }
+  .hud .dot{ width:7px; height:7px; border-radius:50%; background: var(--dim); }
+  .hud.live .dot{
+    background: var(--rec);
+    box-shadow: 0 0 8px var(--rec);
+    animation: pulse 1.4s infinite ease-in-out;
+  }
+  .hud.live .label{ color: var(--rec); }
+  .hud .label{ color: var(--dim); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+
+  .roomcode-badge{
+    position:absolute; top:12px; right:12px;
+    font-size:11px;
+    color: var(--signal);
+    background: rgba(5,9,6,0.7);
+    border:1px solid var(--line);
+    padding: 6px 10px;
+    border-radius: 2px;
+    letter-spacing:0.1em;
+  }
+  .roomcode-badge span{ color: var(--dim); letter-spacing:0.04em; }
+
+  .viewers-badge{
+    position:absolute; bottom:12px; right:12px;
+    font-size:11px;
+    color: var(--amber);
+    background: rgba(5,9,6,0.7);
+    border:1px solid var(--line);
+    padding: 6px 10px;
+    border-radius: 2px;
+  }
+  .viewers-badge span{ color: var(--dim); }
+
+  /* ---- Painéis de convite (transmissor) ---- */
+  .peer-panels{
+    border-bottom: 1px solid var(--line);
+  }
+  .peer-section{
+    padding: 14px 18px;
+    border-top: 1px solid var(--line);
+  }
+  .peer-section:first-child{ border-top: none; }
+  .peer-section-title{
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    margin-bottom: 10px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .peer-section-title .count-pill{
+    background: var(--line);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 10px;
+  }
+  .peer-empty{
+    font-size: 11.5px;
+    color: var(--dim);
+    font-style: normal;
+    opacity: 0.7;
+  }
+  .peer-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    margin-bottom: 8px;
+    font-size: 12.5px;
+    background: rgba(255,255,255,0.01);
+  }
+  .peer-row:last-child{ margin-bottom:0; }
+  .peer-row .peer-name{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .peer-row .peer-name .dot-req{
+    width:6px; height:6px; border-radius:50%;
+    background: var(--amber);
+    flex-shrink:0;
+    animation: pulse 1.4s infinite ease-in-out;
+  }
+  .peer-row .peer-name .dot-active{
+    width:6px; height:6px; border-radius:50%;
+    background: var(--signal);
+    flex-shrink:0;
+  }
+  .peer-row .peer-btns{ display:flex; gap:6px; flex-shrink:0; }
+  .peer-btn{
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    padding: 5px 9px;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .peer-btn.accept{ border-color: var(--signal); color: var(--signal); }
+  .peer-btn.accept:hover{ background: var(--signal); color:#06120c; }
+  .peer-btn.decline{ border-color: var(--rec); color: var(--rec); }
+  .peer-btn.decline:hover{ background: var(--rec); color:#1a0505; }
+  .peer-btn.remove{ border-color: var(--dim); color: var(--dim); }
+  .peer-btn.remove:hover{ border-color: var(--text); color: var(--text); }
+
+  .controls{
+    padding: 18px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .btn-group{ display:flex; gap:10px; flex-wrap:wrap; }
+  button.action{
+    font-family:var(--mono);
+    font-size:12.5px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    background:transparent;
+    color: var(--text);
+    border: 1px solid var(--line);
+    padding: 11px 16px;
+    border-radius: 2px;
+    cursor:pointer;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  button.action:hover:not(:disabled){ border-color: var(--signal); color: var(--signal); }
+  button.action:disabled{ opacity:0.35; cursor:not-allowed; }
+  #stopBtn{ border-color: var(--dim); color: var(--dim); }
+  #stopBtn:hover:not(:disabled){ border-color: var(--text); color: var(--text); }
+
+  .status-line{
+    padding: 0 18px 18px;
+    font-size: 11.5px;
+    color: var(--dim);
+    letter-spacing: 0.03em;
+    border-top: 1px dashed var(--line);
+    margin-top: -2px;
+    padding-top: 14px;
+  }
+  .status-line b{ color: var(--amber); font-weight:600; }
+  .status-line.err b{ color: var(--rec); }
+  .status-line.ok b{ color: var(--signal); }
+
+  .hidden{ display:none !important; }
+
+  @media (max-width:520px){
+    .controls{ flex-direction:column; align-items:stretch; }
+    .btn-group{ justify-content:stretch; }
+    button.action{ flex:1; }
+    .role-cards{ flex-direction:column; align-items:stretch; }
+    .role-card{ max-width:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="rig">
+  <div class="rig-head">
+    <div class="brand">◈ <b>SINAL</b> / compartilhamento de tela</div>
+    <div class="spec-tag">1280×720 · 30 FPS</div>
+  </div>
+
+  <!-- TELA 1: escolha de papel -->
+  <div class="role-select" id="roleSelect">
+    <p>Sem servidor próprio: as duas pontas se encontram por um serviço público de sinalização, e o vídeo trafega direto entre os PCs.</p>
+    <div class="role-cards">
+      <div class="role-card" id="pickBroadcast">
+        <div class="glyph">▣</div>
+        <h3>Transmitir tela</h3>
+        <small>Compartilha sua tela e gera um código para outras pessoas entrarem.</small>
+      </div>
+      <div class="role-card" id="pickWatch">
+        <div class="glyph">▷</div>
+        <h3>Assistir</h3>
+        <small>Entra com um código de sala. Quem transmite precisa aceitar o seu pedido pra você ver a tela.</small>
+        <div class="join-row">
+          <input type="text" id="nameInput" placeholder="SEU NOME" maxlength="24" style="text-transform:none; letter-spacing:0.02em;">
+        </div>
+        <div class="join-row">
+          <input type="text" id="roomInput" placeholder="CÓDIGO" maxlength="8">
+          <button id="joinBtn">Entrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELA 2: transmissor / espectador -->
+  <div class="hidden" id="stage">
+    <div class="screen-wrap">
+      <video id="preview" autoplay playsinline></video>
+      <div class="placeholder" id="placeholder">
+        <div class="glyph">▣</div>
+        <div id="placeholderTitle">sem sinal</div>
+        <small id="placeholderSub">preparando conexão...</small>
+      </div>
+      <div class="hud" id="hud">
+        <div class="dot"></div>
+        <div class="label" id="hudLabel">standby</div>
+      </div>
+      <div class="roomcode-badge hidden" id="roomBadge"><span>sala</span> <b id="roomBadgeCode">—</b></div>
+      <div class="viewers-badge hidden" id="viewersBadge"><span>espectadores</span> <b id="viewersCount">0</b></div>
+    </div>
+
+    <div class="peer-panels hidden" id="peerPanels">
+      <div class="peer-section">
+        <div class="peer-section-title">solicitações de acesso <span class="count-pill" id="pendingCountPill">0</span></div>
+        <div id="pendingList"><div class="peer-empty">nenhum pedido no momento</div></div>
+      </div>
+      <div class="peer-section">
+        <div class="peer-section-title">assistindo agora <span class="count-pill" id="activeCountPill">0</span></div>
+        <div id="activeList"><div class="peer-empty">ninguém conectado ainda</div></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="btn-group">
+        <button class="action" id="stopBtn">Encerrar</button>
+        <span class="back-link" id="backLink">← voltar</span>
+      </div>
+    </div>
+
+    <div class="status-line" id="status">iniciando...</div>
+  </div>
+</div>
+
+<script>
+  // ---------- referências ----------
+  const roleSelect   = document.getElementById('roleSelect');
+  const pickBroadcast= document.getElementById('pickBroadcast');
+  const pickWatch    = document.getElementById('pickWatch');
+  const roomInput    = document.getElementById('roomInput');
+  const nameInput    = document.getElementById('nameInput');
+  const joinBtn      = document.getElementById('joinBtn');
+  const peerPanels     = document.getElementById('peerPanels');
+  const pendingList     = document.getElementById('pendingList');
+  const pendingCountPill= document.getElementById('pendingCountPill');
+  const activeList       = document.getElementById('activeList');
+  const activeCountPill  = document.getElementById('activeCountPill');
+
+  const stage        = document.getElementById('stage');
+  const preview       = document.getElementById('preview');
+  const placeholder    = document.getElementById('placeholder');
+  const placeholderTitle = document.getElementById('placeholderTitle');
+  const placeholderSub   = document.getElementById('placeholderSub');
+  const hud            = document.getElementById('hud');
+  const hudLabel        = document.getElementById('hudLabel');
+  const roomBadge       = document.getElementById('roomBadge');
+  const roomBadgeCode   = document.getElementById('roomBadgeCode');
+  const viewersBadge    = document.getElementById('viewersBadge');
+  const viewersCount    = document.getElementById('viewersCount');
+  const stopBtn         = document.getElementById('stopBtn');
+  const backLink        = document.getElementById('backLink');
+  const statusEl         = document.getElementById('status');
+
+  let peer = null;
+  let localStream = null;
+  let pendingCalls = new Map(); // viewerId -> {call, name}  (só no transmissor, aguardando aprovação)
+  let activeCalls  = new Map(); // viewerId -> {call, name}  (só no transmissor, já aprovados)
+  let viewerCall = null;        // só no espectador
+  let viewerReceivedStream = false; // pra diferenciar "recusado" de "encerrado" no espectador
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function setStatus(msg, kind){
+    statusEl.className = 'status-line' + (kind ? ' ' + kind : '');
+    statusEl.innerHTML = msg;
+  }
+
+  function showStage(){
+    roleSelect.classList.add('hidden');
+    stage.classList.remove('hidden');
+  }
+  function showRoleSelect(){
+    stage.classList.add('hidden');
+    roleSelect.classList.remove('hidden');
+    preview.srcObject = null;
+    placeholder.style.display = 'flex';
+    hud.classList.remove('live');
+    hudLabel.textContent = 'standby';
+    roomBadge.classList.add('hidden');
+    viewersBadge.classList.add('hidden');
+    peerPanels.classList.add('hidden');
+    stopBtn.disabled = false;
+  }
+
+  // preenche código automaticamente se veio por link ?join=CODIGO
+  const urlParams = new URLSearchParams(location.search);
+  if(urlParams.get('join')){
+    roomInput.value = urlParams.get('join').toUpperCase();
+  }
+
+  // ---------- papel: TRANSMISSOR ----------
+  async function startBroadcast(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+      alert('este navegador não suporta captura de tela.');
+      return;
+    }
+
+    const constraints = {
+      video: {
+        width:     { ideal: 1280, max: 1280 },
+        height:    { ideal: 720,  max: 720  },
+        frameRate: { ideal: 30,   max: 30   }
+      },
+      audio: false
+    };
+
+    try{
+      localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    } catch(err){
+      return; // usuário cancelou o seletor de tela
+    }
+
+    showStage();
+    placeholderTitle.textContent = 'gerando sala';
+    placeholderSub.textContent = 'conectando ao serviço de sinalização...';
+    preview.srcObject = localStream;
+    preview.muted = true;
+    hud.classList.add('live');
+    hudLabel.textContent = 'ao vivo';
+    roomBadge.classList.remove('hidden');
+    viewersBadge.classList.remove('hidden');
+    peerPanels.classList.remove('hidden');
+    setStatus('conectando...', '');
+
+    peer = new Peer(); // pega um ID gerado pelo serviço público PeerJS
+
+    peer.on('open', (id) => {
+      roomBadgeCode.textContent = id;
+      placeholder.style.display = 'none';
+      const link = location.origin + location.pathname + '?join=' + id;
+      setStatus('sala aberta — código <b>' + id + '</b>. compartilhe o código ou este link: <br>' + link, 'ok');
+    });
+
+    // Não responde a chamada na hora — fica pendente até você aceitar ou recusar.
+    peer.on('call', (call) => {
+      const name = (call.metadata && call.metadata.name) ? call.metadata.name.slice(0, 24) : 'anônimo';
+      pendingCalls.set(call.peer, { call, name });
+      renderPeerPanels();
+
+      // se quem pediu desistir/fechar a aba antes de você responder
+      call.on('close', () => {
+        if(pendingCalls.has(call.peer)){
+          pendingCalls.delete(call.peer);
+          renderPeerPanels();
+        }
+      });
+    });
+
+    peer.on('error', (err) => {
+      setStatus('erro de conexão: <b>' + err.type + '</b>. tente encerrar e começar de novo.', 'err');
+    });
+
+    localStream.getVideoTracks()[0].addEventListener('ended', stopEverything);
+  }
+
+  function acceptViewer(viewerId){
+    const entry = pendingCalls.get(viewerId);
+    if(!entry) return;
+    pendingCalls.delete(viewerId);
+    entry.call.answer(localStream); // só agora a pessoa recebe a tela
+    activeCalls.set(viewerId, entry);
+    entry.call.on('close', () => {
+      activeCalls.delete(viewerId);
+      renderPeerPanels();
+    });
+    renderPeerPanels();
+  }
+
+  function declineViewer(viewerId){
+    const entry = pendingCalls.get(viewerId);
+    if(!entry) return;
+    pendingCalls.delete(viewerId);
+    entry.call.close(); // fecha sem nunca enviar a tela
+    renderPeerPanels();
+  }
+
+  function removeViewer(viewerId){
+    const entry = activeCalls.get(viewerId);
+    if(!entry) return;
+    entry.call.close();
+    activeCalls.delete(viewerId);
+    renderPeerPanels();
+  }
+
+  function renderPeerPanels(){
+    // pendentes
+    pendingCountPill.textContent = pendingCalls.size;
+    if(pendingCalls.size === 0){
+      pendingList.innerHTML = '<div class="peer-empty">nenhum pedido no momento</div>';
+    } else {
+      pendingList.innerHTML = '';
+      pendingCalls.forEach((entry, id) => {
+        const row = document.createElement('div');
+        row.className = 'peer-row';
+        row.innerHTML =
+          '<div class="peer-name"><span class="dot-req"></span>' + escapeHtml(entry.name) + '</div>' +
+          '<div class="peer-btns">' +
+            '<button class="peer-btn accept" data-id="' + id + '">Aceitar</button>' +
+            '<button class="peer-btn decline" data-id="' + id + '">Recusar</button>' +
+          '</div>';
+        row.querySelector('.accept').addEventListener('click', () => acceptViewer(id));
+        row.querySelector('.decline').addEventListener('click', () => declineViewer(id));
+        pendingList.appendChild(row);
+      });
+    }
+
+    // ativos
+    activeCountPill.textContent = activeCalls.size;
+    viewersCount.textContent = activeCalls.size;
+    if(activeCalls.size === 0){
+      activeList.innerHTML = '<div class="peer-empty">ninguém conectado ainda</div>';
+    } else {
+      activeList.innerHTML = '';
+      activeCalls.forEach((entry, id) => {
+        const row = document.createElement('div');
+        row.className = 'peer-row';
+        row.innerHTML =
+          '<div class="peer-name"><span class="dot-active"></span>' + escapeHtml(entry.name) + '</div>' +
+          '<div class="peer-btns"><button class="peer-btn remove" data-id="' + id + '">Remover</button></div>';
+        row.querySelector('.remove').addEventListener('click', () => removeViewer(id));
+        activeList.appendChild(row);
+      });
+    }
+  }
+
+  // ---------- papel: ESPECTADOR ----------
+  function watchRoom(){
+    const room = roomInput.value.trim().toUpperCase();
+    if(!room){
+      roomInput.focus();
+      return;
+    }
+    const myName = nameInput.value.trim() || 'anônimo';
+    viewerReceivedStream = false;
+
+    showStage();
+    placeholderTitle.textContent = 'aguardando aprovação';
+    placeholderSub.textContent = 'pedido enviado — esperando quem transmite aceitar...';
+    roomBadge.classList.remove('hidden');
+    roomBadgeCode.textContent = room;
+    setStatus('pedido enviado pra sala <b>' + room + '</b> como <b>' + escapeHtml(myName) + '</b>. aguardando aprovação...', '');
+
+    peer = new Peer();
+
+    peer.on('open', () => {
+      const emptyStream = new MediaStream(); // não enviamos vídeo, só recebemos
+      viewerCall = peer.call(room, emptyStream, { metadata: { name: myName } });
+
+      viewerCall.on('stream', (remoteStream) => {
+        viewerReceivedStream = true;
+        preview.srcObject = remoteStream;
+        placeholder.style.display = 'none';
+        hud.classList.add('live');
+        hudLabel.textContent = 'recebendo';
+        setStatus('conectado — assistindo à sala <b>' + room + '</b>.', 'ok');
+      });
+
+      viewerCall.on('close', () => {
+        hud.classList.remove('live');
+        hudLabel.textContent = 'offline';
+        placeholder.style.display = 'flex';
+        if(viewerReceivedStream){
+          placeholderTitle.textContent = 'transmissão encerrada';
+          placeholderSub.textContent = 'quem transmitia saiu da sala.';
+          setStatus('a transmissão foi encerrada pelo transmissor.', '');
+        } else {
+          placeholderTitle.textContent = 'pedido recusado';
+          placeholderSub.textContent = 'quem transmite não aceitou sua entrada.';
+          setStatus('seu pedido de entrada não foi aceito.', 'err');
+        }
+      });
+
+      viewerCall.on('error', () => {
+        setStatus('erro ao receber o vídeo. tente entrar novamente.', 'err');
+      });
+    });
+
+    peer.on('error', (err) => {
+      if(err.type === 'peer-unavailable'){
+        setStatus('sala <b>' + room + '</b> não encontrada — confira o código com quem está transmitindo.', 'err');
+      } else {
+        setStatus('erro de conexão: <b>' + err.type + '</b>.', 'err');
+      }
+      placeholderTitle.textContent = 'não foi possível conectar';
+      placeholderSub.textContent = 'confira o código e tente de novo.';
+    });
+  }
+
+  // ---------- encerrar / voltar ----------
+  function stopEverything(){
+    if(localStream){
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
+    pendingCalls.forEach(entry => entry.call.close());
+    pendingCalls.clear();
+    activeCalls.forEach(entry => entry.call.close());
+    activeCalls.clear();
+    if(viewerCall){ viewerCall.close(); viewerCall = null; }
+    if(peer){ peer.destroy(); peer = null; }
+    showRoleSelect();
+  }
+
+  // ---------- eventos ----------
+  pickBroadcast.addEventListener('click', startBroadcast);
+  joinBtn.addEventListener('click', watchRoom);
+  roomInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') watchRoom(); });
+  stopBtn.addEventListener('click', stopEverything);
+  backLink.addEventListener('click', stopEverything);
+</script>
+
+</body>
+</html>
